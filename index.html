@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>My Timetable</title>
+
+<style>
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: #f4f5f7;
+  color: #17181a;
+}
+
+main {
+  max-width: 650px;
+  margin: auto;
+  padding: 20px 16px 40px;
+}
+
+header {
+  text-align: center;
+  margin-bottom: 18px;
+}
+
+h1 {
+  margin: 0 0 6px;
+  font-size: 28px;
+}
+
+#date {
+  color: #666;
+}
+
+.card {
+  background: white;
+  border-radius: 18px;
+  padding: 20px;
+  margin: 12px 0;
+  box-shadow: 0 2px 12px rgba(0,0,0,.07);
+}
+
+.label {
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: #777;
+  margin-bottom: 8px;
+}
+
+.subject {
+  font-size: 25px;
+  font-weight: 750;
+  margin-bottom: 7px;
+}
+
+.time {
+  font-size: 18px;
+  font-weight: 650;
+  margin-bottom: 8px;
+}
+
+.details {
+  color: #555;
+  line-height: 1.5;
+}
+
+.next {
+  border-left: 5px solid #333;
+}
+
+.empty {
+  text-align: center;
+  color: #555;
+}
+
+.lesson {
+  padding: 13px 0;
+  border-bottom: 1px solid #eee;
+}
+
+.lesson:last-child {
+  border-bottom: 0;
+}
+
+.lesson strong {
+  display: block;
+  font-size: 17px;
+}
+
+.lesson span {
+  color: #666;
+  font-size: 14px;
+}
+
+.refresh {
+  display: block;
+  margin: 18px auto 0;
+  border: 0;
+  background: #17181a;
+  color: white;
+  padding: 10px 16px;
+  border-radius: 10px;
+  font-size: 14px;
+}
+</style>
+</head>
+
+<body>
+
+<main>
+
+<header>
+  <h1>My Timetable</h1>
+  <div id="date"></div>
+</header>
+
+<section id="current"></section>
+<section id="next"></section>
+<section id="today"></section>
+
+<button class="refresh" onclick="update()">Refresh</button>
+
+</main>
+
+<script>
+
+const timetable = {
+
+  // Monday
+  1: [
+    ["11:40","12:35","Tutorial","W201","B Flowers"],
+    ["13:35","14:45","Maths","J209","T Howard"],
+    ["14:55","16:00","Maths","J209","T Howard"]
+  ],
+
+  // Tuesday
+  2: [
+    ["09:00","10:15","Computer Science","E423","C Gosling"],
+    ["10:25","11:35","Computer Science","E423","C Gosling"]
+  ],
+
+  // Wednesday
+  3: [
+    ["10:25","11:35","Directed Study Period","WG01","R Parkes / Z Anwar / E Akhter"],
+    ["11:45","12:55","Maths","J209","T Howard"],
+    ["13:40","14:45","Physics","B236","D Horne"],
+    ["14:55","16:00","Physics","B236","D Horne"]
+  ],
+
+  // Thursday
+  4: [
+    ["10:25","11:35","RE","EX04","R Hooper"],
+    ["13:40","14:45","Computer Science","E423","C Gosling"],
+    ["14:55","16:00","Computer Science","E423","C Gosling"]
+  ],
+
+  // Friday
+  5: [
+    ["09:00","10:15","Physics","B236","D Horne"],
+    ["10:25","11:35","Physics","B236","D Horne"],
+    ["11:45","12:55","Maths","J209","T Howard"]
+  ],
+
+  // Saturday
+  6: [],
+
+  // Sunday
+  0: []
+};
+
+
+function minutes(time) {
+  const [hours, mins] = time.split(":").map(Number);
+  return hours * 60 + mins;
+}
+
+
+function lessonCard(lesson, label) {
+
+  const [start, end, subject, room, teacher] = lesson;
+
+  return `
+    <div class="card">
+      <div class="label">${label}</div>
+
+      <div class="subject">${subject}</div>
+
+      <div class="time">
+        ${start}–${end}
+      </div>
+
+      <div class="details">
+        Room <strong>${room}</strong><br>
+        ${teacher}
+      </div>
+    </div>
+  `;
+}
+
+
+function update() {
+
+  const now = new Date();
+
+  const day = now.getDay();
+
+  const currentMinutes =
+    now.getHours() * 60 + now.getMinutes();
+
+  const lessons = timetable[day] || [];
+
+  document.getElementById("date").textContent =
+    now.toLocaleDateString(undefined, {
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+      year: "numeric"
+    });
+
+
+  let current = null;
+  let next = null;
+
+
+  for (const lesson of lessons) {
+
+    const start = minutes(lesson[0]);
+    const end = minutes(lesson[1]);
+
+    if (
+      currentMinutes >= start &&
+      currentMinutes < end
+    ) {
+      current = lesson;
+    }
+
+    else if (
+      currentMinutes < start &&
+      !next
+    ) {
+      next = lesson;
+    }
+  }
+
+
+  document.getElementById("current").innerHTML =
+    current
+
+    ? lessonCard(current, "Currently")
+
+    : `
+      <div class="card empty">
+
+        <div class="label">
+          Currently
+        </div>
+
+        <div class="subject">
+          No class right now
+        </div>
+
+      </div>
+    `;
+
+
+  document.getElementById("next").innerHTML =
+    next
+
+    ? `
+      <div class="next">
+        ${lessonCard(next, "Next lesson")}
+      </div>
+    `
+
+    : "";
+
+
+  document.getElementById("today").innerHTML = `
+
+    <div class="card">
+
+      <div class="label">
+        Today's timetable
+      </div>
+
+      ${
+        lessons.length
+
+        ? lessons.map(lesson => `
+
+          <div class="lesson">
+
+            <strong>
+              ${lesson[0]}–${lesson[1]}
+              · ${lesson[2]}
+            </strong>
+
+            <span>
+              ${lesson[3]} · ${lesson[4]}
+            </span>
+
+          </div>
+
+        `).join("")
+
+        : `
+          <div class="details">
+            No lessons scheduled today.
+          </div>
+        `
+      }
+
+    </div>
+  `;
+}
+
+
+// Update immediately
+update();
+
+// Update every 30 seconds
+setInterval(update, 30000);
+
+</script>
+
+</body>
+</html>
