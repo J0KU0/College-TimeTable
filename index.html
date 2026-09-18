@@ -802,6 +802,13 @@ textarea.text-input {
 
 .tt-preview {
   display: none;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.tt-preview-item {
+  display: flex;
   align-items: center;
   gap: 14px;
   padding: 12px;
@@ -810,7 +817,7 @@ textarea.text-input {
   background: var(--paper-2);
 }
 
-.tt-preview img {
+.tt-preview-item img {
   width: 72px;
   height: 72px;
   object-fit: cover;
@@ -836,9 +843,16 @@ textarea.text-input {
   font-size: 14px;
   font-family: inherit;
   cursor: pointer;
+  flex-shrink: 0;
 }
 
 .tt-remove:hover { border-color: var(--blue); }
+
+.tt-count {
+  font-size: 13px;
+  color: var(--ink-faint);
+  margin-top: 8px;
+}
 
 .order-submit { margin-top: 8px; }
 
@@ -1305,24 +1319,21 @@ textarea.text-input {
 
         <div class="field" id="timetable-import">
           <label class="field-label" id="tt-label">Import timetable here</label>
-          <p class="field-hint">Optional - upload a picture of your timetable, or type it in.</p>
+          <p class="field-hint">Required - upload a picture of your timetable (up to 4 images), or type it in.</p>
           <div class="radio-group" role="radiogroup" aria-labelledby="tt-label">
-            <label class="radio-option"><input type="radio" name="tt-mode" value="image"> Upload image</label>
-            <label class="radio-option"><input type="radio" name="tt-mode" value="text"> Type text</label>
+            <label class="radio-option"><input type="radio" name="tt-mode" value="image" required> Upload image</label>
+            <label class="radio-option"><input type="radio" name="tt-mode" value="text" required> Type text</label>
           </div>
 
           <div id="tt-image-box" class="tt-box" style="display:none;">
             <label class="file-drop" id="tt-drop">
-              <input type="file" id="tt-file" accept="image/*">
-              <strong>Choose an image</strong>
-              <span>or drag and drop it here</span>
-              <small>A photo or screenshot of your timetable</small>
+              <input type="file" id="tt-file" accept="image/*" multiple>
+              <strong>Choose images</strong>
+              <span>or drag and drop them here</span>
+              <small>Photos or screenshots of your timetable (up to 4)</small>
             </label>
-            <div class="tt-preview" id="tt-preview">
-              <img id="tt-thumb" alt="Timetable preview">
-              <div class="tt-meta" id="tt-meta"></div>
-              <button type="button" class="tt-remove" id="tt-remove">Remove</button>
-            </div>
+            <div class="tt-preview" id="tt-preview"></div>
+            <div class="tt-count" id="tt-count"></div>
           </div>
 
           <div id="tt-text-box" class="tt-box" style="display:none;">
@@ -1762,17 +1773,16 @@ textarea.text-input {
     }
   }
 
-  var ttImage = null;
-  var ttBusy = false;
+  var ttImages = [];
+  var TT_MAX_IMAGES = 4;
+  var ttPending = 0;
   var ttModeRadios = document.querySelectorAll('input[name="tt-mode"]');
   var ttImageBox = document.getElementById('tt-image-box');
   var ttTextBox = document.getElementById('tt-text-box');
   var ttFile = document.getElementById('tt-file');
   var ttDrop = document.getElementById('tt-drop');
   var ttPreview = document.getElementById('tt-preview');
-  var ttThumb = document.getElementById('tt-thumb');
-  var ttMeta = document.getElementById('tt-meta');
-  var ttRemove = document.getElementById('tt-remove');
+  var ttCount = document.getElementById('tt-count');
   var ttText = document.getElementById('tt-text');
   var TT_MAX_INPUT_BYTES = 20 * 1024 * 1024;
   var TT_MAX_EDGE = 1600;
@@ -1785,12 +1795,45 @@ textarea.text-input {
     });
   });
 
-  function ttClearImage() {
-    ttImage = null;
+  function ttRenderPreview() {
+    ttPreview.innerHTML = '';
+    ttImages.forEach(function (item, idx) {
+      var row = document.createElement('div');
+      row.className = 'tt-preview-item';
+
+      var img = document.createElement('img');
+      img.src = item.dataUrl;
+      img.alt = 'Timetable preview';
+      row.appendChild(img);
+
+      var meta = document.createElement('div');
+      meta.className = 'tt-meta';
+      meta.textContent = item.originalName;
+      row.appendChild(meta);
+
+      var removeBtn = document.createElement('button');
+      removeBtn.type = 'button';
+      removeBtn.className = 'tt-remove';
+      removeBtn.textContent = 'Remove';
+      removeBtn.addEventListener('click', function () { ttRemoveImage(idx); });
+      row.appendChild(removeBtn);
+
+      ttPreview.appendChild(row);
+    });
+
+    ttPreview.style.display = ttImages.length ? 'flex' : 'none';
+    ttDrop.style.display = ttImages.length >= TT_MAX_IMAGES ? 'none' : 'flex';
+    if (ttImages.length) {
+      ttCount.textContent = ttImages.length + ' of ' + TT_MAX_IMAGES + ' images added';
+    } else {
+      ttCount.textContent = '';
+    }
+  }
+
+  function ttRemoveImage(idx) {
+    ttImages.splice(idx, 1);
     if (ttFile) ttFile.value = '';
-    if (ttPreview) ttPreview.style.display = 'none';
-    if (ttDrop) ttDrop.style.display = 'flex';
-    if (ttThumb) ttThumb.removeAttribute('src');
+    ttRenderPreview();
   }
 
   function ttEncode(img) {
@@ -1815,51 +1858,59 @@ textarea.text-input {
 
   function ttHandleFile(file) {
     if (!file) return;
+    if (ttImages.length >= TT_MAX_IMAGES) return;
     if (!/^image\//.test(file.type)) {
       alert('Please choose an image file (for example a JPG or PNG).');
-      ttClearImage();
       return;
     }
     if (file.size > TT_MAX_INPUT_BYTES) {
       alert('That image is too large. Please choose one under 20 MB.');
-      ttClearImage();
       return;
     }
-    ttBusy = true;
+    ttPending++;
     var url = URL.createObjectURL(file);
     var img = new Image();
     img.onload = function () {
       try {
         var dataUrl = ttEncode(img);
         var base = file.name.replace(/\.[^.]+$/, '') || 'timetable';
-        ttImage = {
+        ttImages.push({
           fileName: base + '.jpg',
           mimeType: 'image/jpeg',
-          data: dataUrl.split(',')[1]
-        };
-        ttThumb.src = dataUrl;
-        ttMeta.textContent = file.name;
-        ttPreview.style.display = 'flex';
-        ttDrop.style.display = 'none';
+          data: dataUrl.split(',')[1],
+          dataUrl: dataUrl,
+          originalName: file.name
+        });
+        ttRenderPreview();
       } catch (err) {
         console.error(err);
         alert("Sorry, we couldn't read that image. Try a JPG or PNG, or a screenshot.");
-        ttClearImage();
       }
       URL.revokeObjectURL(url);
-      ttBusy = false;
+      ttPending--;
     };
     img.onerror = function () {
       URL.revokeObjectURL(url);
-      ttBusy = false;
+      ttPending--;
       alert("Sorry, we couldn't read that image. Try a JPG or PNG, or a screenshot.");
-      ttClearImage();
     };
     img.src = url;
   }
 
-  if (ttFile) ttFile.addEventListener('change', function () { ttHandleFile(this.files && this.files[0]); });
-  if (ttRemove) ttRemove.addEventListener('click', ttClearImage);
+  function ttHandleFiles(fileList) {
+    if (!fileList) return;
+    var files = Array.prototype.slice.call(fileList);
+    var room = TT_MAX_IMAGES - ttImages.length;
+    if (files.length > room) {
+      alert('You can add up to ' + TT_MAX_IMAGES + ' images. Only the first ' + room + ' will be used.');
+    }
+    files.slice(0, room).forEach(ttHandleFile);
+  }
+
+  if (ttFile) ttFile.addEventListener('change', function () {
+    ttHandleFiles(this.files);
+    this.value = '';
+  });
   if (ttDrop) {
     ['dragenter', 'dragover'].forEach(function (evt) {
       ttDrop.addEventListener(evt, function (e) { e.preventDefault(); ttDrop.classList.add('is-drag'); });
@@ -1868,8 +1919,7 @@ textarea.text-input {
       ttDrop.addEventListener(evt, function (e) { e.preventDefault(); ttDrop.classList.remove('is-drag'); });
     });
     ttDrop.addEventListener('drop', function (e) {
-      var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
-      ttHandleFile(f);
+      ttHandleFiles(e.dataTransfer && e.dataTransfer.files);
     });
   }
 
@@ -1931,15 +1981,33 @@ textarea.text-input {
         return;
       }
 
-      if (ttBusy) {
+      if (ttPending > 0) {
         alert('Your image is still loading - please wait a moment and try again.');
         return;
       }
       var ttModeChecked = form.querySelector('input[name="tt-mode"]:checked');
+      if (!ttModeChecked) {
+        alert('Please upload an image of your timetable or type it in.');
+        return;
+      }
       var timetablePayload = null;
-      if (ttModeChecked && ttModeChecked.value === 'image' && ttImage) {
-        timetablePayload = { mode: 'image', fileName: ttImage.fileName, mimeType: ttImage.mimeType, data: ttImage.data };
-      } else if (ttModeChecked && ttModeChecked.value === 'text' && ttText.value.trim()) {
+      if (ttModeChecked.value === 'image') {
+        if (!ttImages.length) {
+          alert('Please upload at least one image of your timetable.');
+          return;
+        }
+        timetablePayload = {
+          mode: 'image',
+          images: ttImages.map(function (item) {
+            return { fileName: item.fileName, mimeType: item.mimeType, data: item.data };
+          })
+        };
+      } else if (ttModeChecked.value === 'text') {
+        if (!ttText.value.trim()) {
+          alert('Please type in your timetable.');
+          markError(ttText);
+          return;
+        }
         timetablePayload = { mode: 'text', text: ttText.value.trim() };
       }
 
